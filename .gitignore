@@ -1,0 +1,24 @@
+# build results
+bin/
+obj/
+build/
+
+# IDE files
+.vs/
+.vshistory/
+.cache/
+compile_commands.json
+.editorconfig
+*.user
+*.vcxproj.filters
+
+# other files
+.old*/
+old/
+tmp/
+temp/
+*.tmp
+*.temp
+logs/
+log/
+*.log
