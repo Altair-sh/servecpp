@@ -23,11 +23,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(boost_asio CONFIG REQUIRED)
+find_package(CLI11 CONFIG REQUIRED)
 
 add_executable(${PROJ_NAME} ${PROJ_SOURCES})
 target_precompile_headers(${PROJ_NAME} PRIVATE ${PROJ_PRECOMPILED_HEADERS})
 target_compile_options(${PROJ_NAME} PRIVATE "$<$<CONFIG:Debug>:${PROJ_WARNINGS}>")
-target_link_libraries(${PROJ_NAME} PRIVATE Boost::asio)
+target_link_libraries(${PROJ_NAME} PRIVATE Boost::asio CLI11::CLI11)
 
 if(WIN32)
     target_compile_definitions(${PROJ_NAME} PRIVATE _WIN32_WINNT=0x0A00)

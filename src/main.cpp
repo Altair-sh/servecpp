@@ -1,7 +1,7 @@
-#include <boost/asio/as_tuple.hpp>
 #include <vector>
 #include <thread>
 #include <boost/asio.hpp>
+#include <CLI/CLI.hpp>
 #include "std.hpp"
 #include "Logger.hpp"
 
@@ -53,14 +53,27 @@ awaitable<void> listener(tcp::acceptor& acceptor) {
     }
 }
 
-i32 main() {
+i32 main(i32 argc, char* argv[]) {
     try {
+        CLI::App app("servecpp - async web server");
+        std::string address_str = "127.0.0.1";
+        u16 port = 8080;
+        app.add_option("-a,--address", address_str, "address to listen on")
+            ->capture_default_str();
+        app.add_option("-p,--port", port, "port to listen on")
+            ->capture_default_str()
+            ->check(CLI::Range(1, 65535));
+        // handles --help and parse errors: prints the help or the error and returns from main
+        CLI11_PARSE(app, argc, argv);
+        // accepts both IPv4 and IPv6, throws on invalid address
+        auto address = asio::ip::make_address(address_str);
+
         // create as many threads as there are CPU logical cores
         // or at least 1 if hardware_concurrency() fails
         i32 thread_n = std::max(1u, std::thread::hardware_concurrency());
         asio::io_context ctx(thread_n);
         
-        tcp::acceptor acceptor(ctx, {tcp::v4(), 8080});
+        tcp::acceptor acceptor(ctx, {address, port});
         asio::co_spawn(ctx, listener(acceptor), [&ctx](auto e) {
             if (!e) return; // operation aborted
             log_error("Error in listener: {}", stringify_exception(e));
