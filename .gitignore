@@ -22,3 +22,6 @@ temp/
 logs/
 log/
 *.log
+
+# secret
+servecpp.toml

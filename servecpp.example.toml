@@ -1,0 +1,22 @@
+# servecpp config, copy to servecpp.toml
+# The file contains passwords: make it readable only by the user servecpp runs as (chmod 600).
+
+address = "127.0.0.1"           # optional, default 127.0.0.1 (correct behind a reverse proxy)
+port = 8080                     # optional, default 8080
+max_upload = 4_294_967_296      # optional, max size of an uploaded file in bytes, default 4 GiB
+
+# Each [[share]] makes a directory available under an URL prefix.
+# Missing read_password: anyone can download.
+# Missing write_password: read-only, uploads are rejected.
+# The write password also allows downloading.
+
+[[share]]
+url = "/public"                 # http://host/public/...
+path = "/home/servecpp/public"  # relative paths are relative to this config file
+write_password = "change-me"
+
+[[share]]
+url = "/private"
+path = "/home/servecpp/private"
+read_password = "change-me-too"
+write_password = "change-me-three"

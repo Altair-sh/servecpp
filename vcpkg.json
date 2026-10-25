@@ -5,8 +5,16 @@
       "version>=": "1.92.0"
     },
     {
+      "name": "boost-beast",
+      "version>=": "1.92.0"
+    },
+    {
       "name": "cli11",
       "version>=": "2.7.2"
+    },
+    {
+      "name": "tomlplusplus",
+      "version>=": "3.4.0#1"
     }
   ],
   "builtin-baseline": "6f6324d69cc4d5229804bee9f72737fe2ef08087"
