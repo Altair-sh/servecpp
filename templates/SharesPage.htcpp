@@ -1,0 +1,20 @@
+#{
+#include "Path.hpp"
+}
+<!-- list of shares at "/", cfg: Config -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>servecpp</title>
+<style>
+body { font-family: sans-serif; margin: 2em; }
+</style>
+</head>
+<body>
+<h1>Shares</h1>
+<ul>
+    <li><a href="$(percent_encode_path(share.url))/">$(html_escape(share.url))/</a>[[ (password)]]?(share.read_password)</li>@(const auto& share : cfg.shares)
+</ul>
+</body>
+</html>

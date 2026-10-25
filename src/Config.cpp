@@ -22,7 +22,7 @@ namespace asio = boost::asio;
 /// a typo like "read_pasword" must not silently make a share public
 static void check_keys(std::string_view file, const toml::table& t, std::initializer_list<std::string_view> allowed) {
     for (auto&& [key, node] : t)
-        if (!std::ranges::contains(allowed, key.str()))
+        if (std::ranges::find(allowed, key.str()) == allowed.end())
             fail(file, &node, std::format("unknown key '{}'", key.str()));
 }
 
@@ -54,9 +54,9 @@ static std::optional<std::string> optional_password(std::string_view file, const
 static bool is_valid_url(std::string_view url) {
     // url is also used as the realm in WWW-Authenticate: realm="<url>"
     bool has_special = std::ranges::any_of(url, [](char c) {
-        return static_cast<u8>(c) < 0x20 || std::string_view("?#\"\\").contains(c);
+        return static_cast<u8>(c) < 0x20 || std::string_view("?#\"\\").find(c) != std::string_view::npos;
     });
-    return url.size() > 1 && url.starts_with('/') && !url.ends_with('/') && !url.contains("//")
+    return url.size() > 1 && url.starts_with('/') && !url.ends_with('/') && url.find("//") == std::string_view::npos
         && !has_special && is_valid_utf8(url);
 }
 

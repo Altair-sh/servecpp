@@ -14,6 +14,9 @@
 #include "Path.hpp"
 #include "TempFile.hpp"
 #include "std.hpp"
+// generated from templates/*.htcpp
+#include "ListingPage.h"
+#include "SharesPage.h"
 
 namespace asio = boost::asio;
 namespace beast = boost::beast;
@@ -28,10 +31,10 @@ namespace {
 
 constexpr auto io_timeout = 30s;        // idle keep-alive, request header, each body chunk
 constexpr auto auth_fail_delay = 1s;    // slows down password guessing
-constexpr auto linger_timeout = 2s;
 constexpr size_t header_limit = 8 * 1024;
 constexpr size_t file_chunk_size = 256 * 1024;
 constexpr std::string_view text_plain = "text/plain; charset=utf-8";
+constexpr std::string_view text_html = "text/html; charset=utf-8";
 
 using RequestParser = http::request_parser<http::empty_body>;
 
@@ -53,8 +56,7 @@ bool is_disconnect(const boost::system::error_code& ec) {
     return ec == http::error::end_of_stream || ec == http::error::partial_message
         || ec == beast::error::timeout || ec == asio::error::eof
         || ec == asio::error::connection_reset || ec == asio::error::connection_aborted
-        || ec == asio::error::broken_pipe || ec == asio::error::shut_down
-        || ec == asio::error::operation_aborted;
+        || ec == asio::error::broken_pipe || ec == asio::error::operation_aborted;
 }
 
 template <class Body>
@@ -158,7 +160,7 @@ struct ByteRange {
 ByteRange parse_range(std::string_view header, u64 size) {
     ByteRange full{ ByteRange::full, 0, size };
     constexpr std::string_view unit = "bytes=";
-    if (!header.starts_with(unit) || header.contains(','))
+    if (!header.starts_with(unit) || header.find(',') != std::string_view::npos)
         return full;
     header.remove_prefix(unit.size());
     size_t dash = header.find('-');
@@ -258,147 +260,27 @@ awaitable<void> send_file(Exchange& ex, const fs::path& file) {
     }
 }
 
-constexpr std::string_view page_style =
-    "<style>body{font-family:sans-serif;margin:2em}td{padding:.2em 1em .2em 0}"
-    "td.size,td.date{color:#666;white-space:nowrap}#status p{margin:.3em 0}.error{color:#c00}</style>";
-
-/// Upload form logic. For each file: asks the server whether the upload would be accepted
-/// (OPTIONS with X-Upload-Size), asks before replacing an existing file, uploads with progress,
-/// then reloads only the file table, so the password stays in its field.
-/// The check comes first, because a PUT rejected while the browser is still sending the file
-/// ends with a connection reset, and the browser reports only "NetworkError".
-/// Error messages are the response bodies.
-constexpr std::string_view upload_script = R"(<script>
-const form = document.getElementById("upload");
-const filesInput = document.getElementById("files");
-const passwordInput = document.getElementById("password");
-const uploadButton = form.querySelector("button");
-const statusBox = document.getElementById("status");
-const replaceDialog = document.getElementById("replace");
-const base = form.dataset.base;
-
-function formatSize(n) {
-    const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-    let i = 0;
-    for (; n >= 1024 && i < units.length - 1; i++)
-        n /= 1024;
-    return (i === 0 ? n : n.toFixed(1)) + " " + units[i];
-}
-
-function authorization() {
-    const bytes = new TextEncoder().encode(":" + passwordInput.value);
-    return "Basic " + btoa(String.fromCharCode(...bytes));
-}
-
-// the server explains errors in the response body
-function errorText(status, body) {
-    return body.trim() || `HTTP ${status}`;
-}
-
-function askReplace(name) {
-    replaceDialog.querySelector("p").textContent = `File "${name}" already exists. Replace it?`;
-    replaceDialog.returnValue = "";
-    replaceDialog.showModal();
-    return new Promise(resolve => replaceDialog.addEventListener("close",
-        () => resolve(replaceDialog.returnValue === "yes"), { once: true }));
-}
-
-function put(url, file, line) {
-    return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", url);
-        xhr.setRequestHeader("Authorization", authorization());
-        const start = performance.now();
-        xhr.upload.onprogress = (e) => {
-            const seconds = (performance.now() - start) / 1000;
-            const speed = seconds > 0 ? e.loaded / seconds : 0;
-            line.textContent = `Uploading file "${file.name}" ${formatSize(e.loaded)}/${formatSize(e.total)} (${formatSize(speed)}/s)`;
-        };
-        xhr.onload = () => xhr.status >= 200 && xhr.status < 300
-            ? resolve() : reject(new Error(errorText(xhr.status, xhr.responseText)));
-        xhr.onerror = () => reject(new Error("connection failed"));
-        xhr.send(file);
-    });
-}
-
-async function upload(file, line) {
-    const url = base + encodeURIComponent(file.name);
-    line.textContent = `Checking file "${file.name}"...`;
-    const check = await fetch(url, {
-        method: "OPTIONS",
-        headers: { "Authorization": authorization(), "X-Upload-Size": String(file.size) },
-    });
-    // 200: the file exists, 404: it doesn't, anything else: the upload would be rejected
-    if (check.status === 200) {
-        if (!await askReplace(file.name)) {
-            line.textContent = `File "${file.name}" skipped`;
-            return false;
-        }
-    }
-    else if (check.status !== 404) {
-        throw new Error(errorText(check.status, await check.text()));
-    }
-    await put(url, file, line);
-    line.textContent = `File "${file.name}" uploaded`;
-    return true;
-}
-
-async function refreshListing() {
-    const res = await fetch(location.href, { cache: "no-store" });
-    if (!res.ok)
-        return;
-    const page = new DOMParser().parseFromString(await res.text(), "text/html");
-    const table = page.getElementById("listing");
-    if (table)
-        document.getElementById("listing").replaceWith(table);
-}
-
-form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    uploadButton.disabled = true;
-    statusBox.replaceChildren();
-    const notUploaded = new DataTransfer();
-    for (const file of filesInput.files) {
-        const line = document.createElement("p");
-        statusBox.append(line);
-        try {
-            if (!await upload(file, line))
-                notUploaded.items.add(file);
-        }
-        catch (err) {
-            line.textContent = `Error: file "${file.name}": ${err.message}`;
-            line.className = "error";
-            notUploaded.items.add(file);
-        }
-    }
-    // uploaded files are removed from the selection, the rest stays for another try
-    filesInput.files = notUploaded.files;
-    uploadButton.disabled = false;
-    await refreshListing();
-});
-</script>)";
-
 awaitable<void> send_share_list(Exchange& ex) {
-    std::string html;
-    auto out = std::back_inserter(html);
-    std::format_to(out, "<!doctype html><html><head><meta charset=\"utf-8\"><title>servecpp</title>{}</head><body>"
-        "<h1>Shares</h1><ul>", page_style);
-    for (const Share& share : ex.config.shares) {
-        std::format_to(out, "<li><a href=\"{}/\">{}/</a>{}</li>",
-            percent_encode_path(share.url), html_escape(share.url), share.read_password ? " (password)" : "");
-    }
-    html += "</ul></body></html>";
-    co_await send(ex, make_response(ex, http::status::ok, std::move(html), "text/html; charset=utf-8"));
+    co_await send(ex, make_response(ex, http::status::ok, SharesPage{}.render(ex.config), text_html));
 }
+
+/// data for templates/ListingPage.htcpp
+struct ListingEntry {
+    std::string name;
+    bool is_dir;
+    std::string size;   // human-readable, empty for directories
+    std::string date;   // last modification, UTC
+};
+
+struct Listing {
+    std::string path;       // decoded URL of the directory, ends with '/'
+    std::string parent;     // decoded URL of the parent directory
+    bool writable;          // the share has write_password: show the upload form
+    std::vector<ListingEntry> entries;
+};
 
 awaitable<void> send_listing(Exchange& ex, const Share& share, std::string_view url_path, const fs::path& dir) {
-    struct Entry {
-        std::string name;
-        bool is_dir;
-        u64 size;
-        fs::file_time_type mtime;
-    };
-    std::vector<Entry> entries;
+    Listing listing;
     std::error_code ec;
     for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
         std::string name = path_utf8(it->path().filename());
@@ -407,61 +289,28 @@ awaitable<void> send_listing(Exchange& ex, const Share& share, std::string_view 
         std::error_code entry_ec;
         bool is_dir = it->is_directory(entry_ec);
         u64 size = is_dir ? 0 : it->file_size(entry_ec);
-        entries.push_back({ std::move(name), is_dir, entry_ec ? 0 : size, it->last_write_time(entry_ec) });
+        auto mtime = std::chrono::floor<std::chrono::minutes>(std::chrono::file_clock::to_sys(it->last_write_time(entry_ec)));
+        listing.entries.push_back({
+            std::move(name), is_dir, is_dir ? "" : human_size(entry_ec ? 0 : size), std::format("{:%F %R}", mtime) });
     }
     if (ec) {
         co_await send_message(ex, http::status::internal_server_error, "can't read the directory");
         co_return;
     }
     // directories first, then by name
-    std::ranges::sort(entries, [](const Entry& a, const Entry& b) {
+    std::ranges::sort(listing.entries, [](const ListingEntry& a, const ListingEntry& b) {
         return a.is_dir != b.is_dir ? a.is_dir : a.name < b.name;
     });
 
-    std::string base(url_path);
-    if (!base.ends_with('/'))
-        base += '/';
-    std::string parent = "/";
-    if (base != share.url + '/')
-        parent = base.substr(0, base.find_last_of('/', base.size() - 2) + 1);
+    listing.path = url_path;
+    if (!listing.path.ends_with('/'))
+        listing.path += '/';
+    listing.parent = "/";
+    if (listing.path != share.url + '/')
+        listing.parent = listing.path.substr(0, listing.path.find_last_of('/', listing.path.size() - 2) + 1);
+    listing.writable = share.write_password.has_value();
 
-    std::string html;
-    auto out = std::back_inserter(html);
-    std::format_to(out, "<!doctype html><html><head><meta charset=\"utf-8\"><title>{0}</title>{1}</head><body><h1>{0}</h1>",
-        html_escape(base), page_style);
-
-    // above the table: directories can have many files
-    if (share.write_password) {
-        // the file is sent as the raw PUT body, the server doesn't need to parse multipart forms
-        std::format_to(out,
-            "<form id=\"upload\" data-base=\"{}\">"
-            "<input type=\"file\" id=\"files\" multiple required> "
-            "<input type=\"password\" id=\"password\" placeholder=\"write password\" autocomplete=\"current-password\" required> "
-            "<button>Upload</button></form>"
-            "<div id=\"status\"></div>"
-            "<dialog id=\"replace\"><p></p><form method=\"dialog\">"
-            "<button value=\"yes\">Yes</button> <button value=\"no\">No</button></form></dialog>",
-            percent_encode_path(base));
-    }
-
-    std::format_to(out, "<table id=\"listing\"><tr><td><a href=\"{}\">../</a></td></tr>", percent_encode_path(parent));
-    for (const Entry& e : entries) {
-        auto mtime = std::chrono::floor<std::chrono::minutes>(std::chrono::file_clock::to_sys(e.mtime));
-        if (e.is_dir) {
-            std::format_to(out, "<tr><td><a href=\"{}/\">{}/</a></td><td class=\"size\"></td><td class=\"date\">{:%F %R}</td></tr>",
-                percent_encode_path(base + e.name), html_escape(e.name), mtime);
-        }
-        else {
-            // download: clicking the link saves the file instead of opening it in the browser
-            std::format_to(out, "<tr><td><a href=\"{}\" download>{}</a></td><td class=\"size\">{}</td><td class=\"date\">{:%F %R}</td></tr>",
-                percent_encode_path(base + e.name), html_escape(e.name), human_size(e.size), mtime);
-        }
-    }
-    html += "</table>";
-    if (share.write_password)
-        html += upload_script;
-    html += "</body></html>";
-    co_await send(ex, make_response(ex, http::status::ok, std::move(html), "text/html; charset=utf-8"));
+    co_await send(ex, make_response(ex, http::status::ok, ListingPage{}.render(listing), text_html));
 }
 
 awaitable<void> handle_get(Exchange& ex, const Share& share, std::string_view url_path, const fs::path& file) {
@@ -653,30 +502,11 @@ awaitable<void> handle_request(Exchange& ex) {
         co_await handle_get(ex, *share, *path, *file);
 }
 
-/// Closes the sending side and reads what the client still sends (for example an upload body
-/// that was rejected). Closing a socket with unread data resets the connection,
-/// and the client may lose the response.
-awaitable<void> close_gracefully(beast::tcp_stream& stream) {
-    boost::system::error_code ec;
-    stream.socket().shutdown(tcp::socket::shutdown_send, ec);
-    if (ec)
-        co_return;
-    stream.expires_after(linger_timeout);
-    char scratch[16 * 1024];
-    for (u64 total = 0; total < 64 * 1024 * 1024;) {
-        auto [read_ec, n] = co_await stream.async_read_some(asio::buffer(scratch), asio::as_tuple(use_awaitable));
-        if (read_ec)
-            break;
-        total += n;
-    }
-}
-
 } // namespace
 
 awaitable<void> http_session(tcp::socket socket, const Config& config) {
     boost::system::error_code ec;
-    tcp::endpoint remote = socket.remote_endpoint(ec);
-    std::string peer = remote.address().to_string();
+    std::string peer = socket.remote_endpoint(ec).address().to_string();
     beast::tcp_stream stream(std::move(socket));
     beast::flat_buffer buffer;
     try {
@@ -715,7 +545,7 @@ awaitable<void> http_session(tcp::socket socket, const Config& config) {
             if (!ex.keep_alive)
                 break;
         }
-        co_await close_gracefully(stream);
+        // the stream's destructor closes the connection
     }
     catch (const boost::system::system_error& e) {
         if (!is_disconnect(e.code()))

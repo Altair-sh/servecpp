@@ -9,6 +9,10 @@ Built on Boost.Asio coroutines and Boost.Beast. Meant to run behind a reverse pr
 cmake --workflow --preset release
 ```
 
+The web pages are HTML templates in [templates](templates), transpiled to C++ headers during the build by [hypertextcpp](https://github.com/kamchatka-volcano/hypertextcpp).
+It has no port in the official vcpkg registry, so vcpkg builds it from the overlay port in [ports/hypertextcpp](ports/hypertextcpp), pinned to v2.0.0.
+Its build downloads its dependencies with git, so the first build needs git and network access.
+
 ## Run
 
 ```sh

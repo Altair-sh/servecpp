@@ -1,0 +1,180 @@
+#{
+#include "Path.hpp"
+}
+<!-- directory listing, cfg: Listing (HttpSession.cpp) -->
+<!-- expressions aren't escaped: names go through html_escape(), URLs through percent_encode_path() -->
+<!-- in the script, dollar + brace and double brackets are template syntax: no JS template strings, -->
+<!-- and "less than" starts a tag: comparisons are written with "greater than" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>$(html_escape(cfg.path))</title>
+<style>
+body { font-family: sans-serif; margin: 2em; }
+td { padding: .2em 1em .2em 0; }
+td.size, td.date { color: #666; white-space: nowrap; }
+#status p { margin: .3em 0; }
+.error { color: #c00; }
+</style>
+</head>
+<body>
+<h1>$(html_escape(cfg.path))</h1>
+
+<!-- above the table: directories can have many files -->
+[[
+<form id="upload" data-base="$(percent_encode_path(cfg.path))">
+    <input type="file" id="files" multiple required>
+    <input type="password" id="password" placeholder="write password" autocomplete="current-password" required>
+    <button>Upload</button>
+</form>
+<div id="status"></div>
+<dialog id="replace">
+    <p></p>
+    <form method="dialog">
+        <button value="yes">Yes</button>
+        <button value="no">No</button>
+    </form>
+</dialog>
+]]?(cfg.writable)
+
+<!-- download attribute: clicking a file link saves the file instead of opening it in the browser -->
+<table id="listing">
+    <tr><td><a href="$(percent_encode_path(cfg.parent))">../</a></td></tr>
+    [[
+    <tr>
+        <td><a href="$(percent_encode_path(cfg.path + e.name))/">$(html_escape(e.name))/</a></td>
+        <td class="size"></td>
+        <td class="date">$(e.date)</td>
+    </tr>?(e.is_dir)
+    <tr>
+        <td><a href="$(percent_encode_path(cfg.path + e.name))" download>$(html_escape(e.name))</a></td>
+        <td class="size">$(e.size)</td>
+        <td class="date">$(e.date)</td>
+    </tr>?(!e.is_dir)
+    ]]@(const auto& e : cfg.entries)
+</table>
+
+<!--
+Upload: for each file asks the server whether the upload would be accepted (OPTIONS with X-Upload-Size),
+asks before replacing an existing file, uploads with progress, then reloads only the file table,
+so the password stays in its field.
+The check comes first, because a PUT rejected while the browser is still sending the file
+ends with a connection reset, and the browser reports only "NetworkError".
+Error messages are the response bodies.
+The file is sent as the raw PUT body, the server doesn't need to parse multipart forms.
+-->
+[[
+<script>
+const form = document.getElementById("upload");
+const filesInput = document.getElementById("files");
+const passwordInput = document.getElementById("password");
+const uploadButton = form.querySelector("button");
+const statusBox = document.getElementById("status");
+const replaceDialog = document.getElementById("replace");
+const base = form.dataset.base;
+
+function formatSize(n) {
+    const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let i = 0;
+    for (; n >= 1024 && units.length - 1 > i; i++)
+        n /= 1024;
+    return (i === 0 ? n : n.toFixed(1)) + " " + units[i];
+}
+
+function authorization() {
+    const bytes = new TextEncoder().encode(":" + passwordInput.value);
+    return "Basic " + btoa(String.fromCharCode(...bytes));
+}
+
+// the server explains errors in the response body
+function errorText(status, body) {
+    return body.trim() || "HTTP " + status;
+}
+
+function askReplace(name) {
+    replaceDialog.querySelector("p").textContent = 'File "' + name + '" already exists. Replace it?';
+    replaceDialog.returnValue = "";
+    replaceDialog.showModal();
+    return new Promise(resolve => replaceDialog.addEventListener("close",
+        () => resolve(replaceDialog.returnValue === "yes"), { once: true }));
+}
+
+function put(url, file, line) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", url);
+        xhr.setRequestHeader("Authorization", authorization());
+        const start = performance.now();
+        xhr.upload.onprogress = (e) => {
+            const seconds = (performance.now() - start) / 1000;
+            const speed = seconds > 0 ? e.loaded / seconds : 0;
+            line.textContent = 'Uploading file "' + file.name + '" '
+                + formatSize(e.loaded) + "/" + formatSize(e.total) + " (" + formatSize(speed) + "/s)";
+        };
+        xhr.onload = () => xhr.status >= 200 && 300 > xhr.status
+            ? resolve() : reject(new Error(errorText(xhr.status, xhr.responseText)));
+        xhr.onerror = () => reject(new Error("connection failed"));
+        xhr.send(file);
+    });
+}
+
+async function upload(file, line) {
+    const url = base + encodeURIComponent(file.name);
+    line.textContent = 'Checking file "' + file.name + '"...';
+    const check = await fetch(url, {
+        method: "OPTIONS",
+        headers: { "Authorization": authorization(), "X-Upload-Size": String(file.size) },
+    });
+    // 200: the file exists, 404: it doesn't, anything else: the upload would be rejected
+    if (check.status === 200) {
+        if (!await askReplace(file.name)) {
+            line.textContent = 'File "' + file.name + '" skipped';
+            return false;
+        }
+    }
+    else if (check.status !== 404) {
+        throw new Error(errorText(check.status, await check.text()));
+    }
+    await put(url, file, line);
+    line.textContent = 'File "' + file.name + '" uploaded';
+    return true;
+}
+
+async function refreshListing() {
+    const res = await fetch(location.href, { cache: "no-store" });
+    if (!res.ok)
+        return;
+    const page = new DOMParser().parseFromString(await res.text(), "text/html");
+    const table = page.getElementById("listing");
+    if (table)
+        document.getElementById("listing").replaceWith(table);
+}
+
+form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    uploadButton.disabled = true;
+    statusBox.replaceChildren();
+    const notUploaded = new DataTransfer();
+    for (const file of filesInput.files) {
+        const line = document.createElement("p");
+        statusBox.append(line);
+        try {
+            if (!await upload(file, line))
+                notUploaded.items.add(file);
+        }
+        catch (err) {
+            line.textContent = 'Error: file "' + file.name + '": ' + err.message;
+            line.className = "error";
+            notUploaded.items.add(file);
+        }
+    }
+    // uploaded files are removed from the selection, the rest stays for another try
+    filesInput.files = notUploaded.files;
+    uploadButton.disabled = false;
+    await refreshListing();
+});
+</script>
+]]?(cfg.writable)
+</body>
+</html>

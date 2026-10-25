@@ -115,7 +115,7 @@ static bool is_reserved_windows_name(std::string_view seg) {
     std::string base(seg.substr(0, seg.find('.')));
     std::ranges::transform(base, base.begin(), [](char c) { return static_cast<char>(std::toupper(static_cast<u8>(c))); });
     static constexpr std::array<std::string_view, 4> names = { "CON", "PRN", "AUX", "NUL" };
-    if (std::ranges::contains(names, base))
+    if (std::ranges::find(names, base) != names.end())
         return true;
     return base.size() == 4 && (base.starts_with("COM") || base.starts_with("LPT"))
         && base[3] >= '0' && base[3] <= '9';
@@ -132,7 +132,7 @@ static bool is_safe_segment(std::string_view seg) {
         if (c < 0x20 || c == 0x7F)
             return false;
         // invalid in Windows file names, ':' also selects NTFS streams
-        if (std::string_view("\\:*?\"<>|").contains(ch))
+        if (std::string_view("\\:*?\"<>|").find(ch) != std::string_view::npos)
             return false;
     }
     return !is_reserved_windows_name(seg);

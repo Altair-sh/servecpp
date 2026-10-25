@@ -1,0 +1,6 @@
+hypertextcpp provides CMake functions that transpile .htcpp templates to C++ headers during the build:
+
+    find_package(hypertextcpp CONFIG REQUIRED)
+    hypertextcpp_TargetTemplates(main TEMPLATE_FILES page.htcpp)
+
+Add it as a host dependency in vcpkg.json: { "name": "hypertextcpp", "host": true }

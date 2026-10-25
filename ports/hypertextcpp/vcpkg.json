@@ -1,0 +1,14 @@
+{
+  "name": "hypertextcpp",
+  "version": "2.0.0",
+  "description": "Transpiles .htcpp HTML templates to C++ code",
+  "homepage": "https://github.com/kamchatka-volcano/hypertextcpp",
+  "license": "MS-PL",
+  "supports": "native",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    }
+  ]
+}
