@@ -14,6 +14,7 @@
 body { font-family: sans-serif; margin: 2em; }
 td { padding: .2em 1em .2em 0; }
 td.size, td.date { color: #666; white-space: nowrap; }
+caption { text-align: left; color: #666; padding-bottom: .5em; }
 #status p { margin: .3em 0; }
 .error { color: #c00; }
 </style>
@@ -39,7 +40,9 @@ td.size, td.date { color: #666; white-space: nowrap; }
 ]]?(cfg.writable)
 
 <!-- download attribute: clicking a file link saves the file instead of opening it in the browser -->
+<!-- free space is in the table, so it is updated with the table after an upload -->
 <table id="listing">
+    <caption>Free space: $(cfg.free_space)</caption>?(!cfg.free_space.empty())
     <tr><td><a href="$(percent_encode_path(cfg.parent))">../</a></td></tr>
     [[
     <tr>

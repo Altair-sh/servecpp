@@ -276,6 +276,7 @@ struct Listing {
     std::string path;       // decoded URL of the directory, ends with '/'
     std::string parent;     // decoded URL of the parent directory
     bool writable;          // the share has write_password: show the upload form
+    std::string free_space; // human-readable, empty if unknown
     std::vector<ListingEntry> entries;
 };
 
@@ -309,6 +310,9 @@ awaitable<void> send_listing(Exchange& ex, const Share& share, std::string_view 
     if (listing.path != share.url + '/')
         listing.parent = listing.path.substr(0, listing.path.find_last_of('/', listing.path.size() - 2) + 1);
     listing.writable = share.write_password.has_value();
+    fs::space_info space = fs::space(dir, ec);
+    if (!ec)
+        listing.free_space = human_size(space.available);
 
     co_await send(ex, make_response(ex, http::status::ok, ListingPage{}.render(listing), text_html));
 }
@@ -540,8 +544,8 @@ awaitable<void> http_session(tcp::socket socket, const Config& config) {
                 co_await handle_request(ex);
             }
 
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
-            log_info("{} {} {} {} {}B {}ms", client, method, target, static_cast<unsigned>(ex.status), ex.bytes, ms.count());
+            auto ms = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
+            log_info("{} {} {} {} {} {}us", client, method, target, static_cast<unsigned>(ex.status), human_size(ex.bytes), ms.count());
             if (!ex.keep_alive)
                 break;
         }
