@@ -8,13 +8,21 @@ set(PROJ_SOURCES
     src/Auth.cpp
     src/Path.cpp
     src/HttpSession.cpp
+    src/Exchange.cpp
+    src/Download.cpp
+    src/Listing.cpp
+    src/Upload.cpp
+    src/Mime.cpp
     src/TempFile.cpp
+    src/BoostSrc.cpp
 )
 # HTML templates, transpiled to C++ headers by hypertextcpp
 set(PROJ_TEMPLATES
     templates/SharesPage.htcpp
     templates/ListingPage.htcpp
 )
+# Only what most files use: every file loads the whole precompiled header,
+# adding CLI11 and toml++ (one file each) made the other files slower
 set(PROJ_PRECOMPILED_HEADERS
     <stdio.h>
     <boost/asio.hpp>
@@ -70,8 +78,11 @@ target_link_libraries(${PROJ_NAME} PRIVATE
     tomlplusplus::tomlplusplus)
 # disable old code parts kept for compatibility because they produce warnings
 target_compile_definitions(${PROJ_NAME} PRIVATE BOOST_ASIO_NO_DEPRECATED)
+# non-template code of Asio and Beast is compiled once, in src/BoostSrc.cpp
+target_compile_definitions(${PROJ_NAME} PRIVATE BOOST_ASIO_SEPARATE_COMPILATION BOOST_BEAST_SEPARATE_COMPILATION)
 
 if(WIN32)
     target_compile_definitions(${PROJ_NAME} PRIVATE _WIN32_WINNT=0x0A00)
-    target_link_libraries(${PROJ_NAME} PRIVATE ws2_32 mswsock)
+    # bcrypt: random pipe names in Asio's separately compiled code
+    target_link_libraries(${PROJ_NAME} PRIVATE ws2_32 mswsock bcrypt)
 endif()

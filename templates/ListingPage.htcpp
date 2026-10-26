@@ -1,7 +1,7 @@
 #{
 #include "Path.hpp"
 }
-<!-- directory listing, cfg: Listing (HttpSession.cpp) -->
+<!-- directory listing, cfg: Listing (Listing.cpp) -->
 <!-- expressions aren't escaped: names go through html_escape(), URLs through percent_encode_path() -->
 <!-- in the script, dollar + brace and double brackets are template syntax: no JS template strings, -->
 <!-- and "less than" starts a tag: comparisons are written with "greater than" -->
