@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 set(PROJ_NAME servecpp)
-set(PROJ_SOURCES
+set(SOURCES
     src/main.cpp
     src/Logger.cpp
     src/Config.cpp
@@ -17,30 +17,33 @@ set(PROJ_SOURCES
     src/BoostSrc.cpp
 )
 # HTML templates, transpiled to C++ headers by hypertextcpp
-set(PROJ_TEMPLATES
+set(TEMPLATES
     templates/SharesPage.htcpp
     templates/ListingPage.htcpp
 )
-# Only what most files use: every file loads the whole precompiled header,
+
+# Debug: warnings and a precompiled header.
+# The precompiled header has only what most files use: every file loads the whole of it,
 # adding CLI11 and toml++ (one file each) made the other files slower
-set(PROJ_PRECOMPILED_HEADERS
-    <stdio.h>
-    <boost/asio.hpp>
-    <boost/beast.hpp>
-)
-set(PROJ_WARNINGS
+set(DEBUG_WARNINGS
     -Wall
     -Wextra
     -Wpedantic
 )
+set(DEBUG_PRECOMPILED_HEADERS
+    <boost/asio.hpp>
+    <boost/beast.hpp>
+)
+
 # Release: link-time optimization, every function and variable in its own section,
-# so the linker can remove the unused ones
-set(PROJ_RELEASE_COMPILE_OPTIONS
+# so the linker can remove the unused ones.
+# No precompiled header: release is a clean build on the server, where it adds time and a large file
+set(RELEASE_COMPILE_OPTIONS
     -flto=auto
     -ffunction-sections
     -fdata-sections
 )
-set(PROJ_RELEASE_LINK_OPTIONS
+set(RELEASE_LINK_OPTIONS
     -flto=auto
     -fuse-linker-plugin
     -Wl,--gc-sections
@@ -62,24 +65,30 @@ find_package(CLI11 CONFIG REQUIRED)
 find_package(tomlplusplus CONFIG REQUIRED)
 find_package(hypertextcpp CONFIG REQUIRED)
 
-add_executable(${PROJ_NAME} ${PROJ_SOURCES})
+add_executable(${PROJ_NAME} ${SOURCES})
 # generate C++ headers from .htcpp files, source code includes them
-hypertextcpp_TargetTemplates(${PROJ_NAME} TEMPLATE_FILES ${PROJ_TEMPLATES})
+hypertextcpp_TargetTemplates(${PROJ_NAME} TEMPLATE_FILES ${TEMPLATES})
 # to include "Path.hpp" in generated headers
 target_include_directories(${PROJ_NAME} PRIVATE src)
-target_precompile_headers(${PROJ_NAME} PRIVATE ${PROJ_PRECOMPILED_HEADERS})
-target_compile_options(${PROJ_NAME} PRIVATE "$<$<CONFIG:Debug>:${PROJ_WARNINGS}>")
-target_compile_options(${PROJ_NAME} PRIVATE "$<$<CONFIG:Release>:${PROJ_RELEASE_COMPILE_OPTIONS}>")
-target_link_options(${PROJ_NAME} PRIVATE "$<$<CONFIG:Release>:${PROJ_RELEASE_LINK_OPTIONS}>")
-target_link_libraries(${PROJ_NAME} PRIVATE 
+target_link_libraries(${PROJ_NAME} PRIVATE
     Boost::asio
     Boost::beast
     CLI11::CLI11
-    tomlplusplus::tomlplusplus)
+    tomlplusplus::tomlplusplus
+)
 # disable old code parts kept for compatibility because they produce warnings
 target_compile_definitions(${PROJ_NAME} PRIVATE BOOST_ASIO_NO_DEPRECATED)
-# non-template code of Asio and Beast is compiled once, in src/BoostSrc.cpp
+# boost libraries are header-only by default, it slows down compilation.
+# Non-template code of Asio and Beast is compiled once, in src/BoostSrc.cpp
 target_compile_definitions(${PROJ_NAME} PRIVATE BOOST_ASIO_SEPARATE_COMPILATION BOOST_BEAST_SEPARATE_COMPILATION)
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_options(${PROJ_NAME} PRIVATE ${DEBUG_WARNINGS})
+    target_precompile_headers(${PROJ_NAME} PRIVATE ${DEBUG_PRECOMPILED_HEADERS})
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    target_compile_options(${PROJ_NAME} PRIVATE ${RELEASE_COMPILE_OPTIONS})
+    target_link_options(${PROJ_NAME} PRIVATE ${RELEASE_LINK_OPTIONS})
+endif()
 
 if(WIN32)
     target_compile_definitions(${PROJ_NAME} PRIVATE _WIN32_WINNT=0x0A00)
