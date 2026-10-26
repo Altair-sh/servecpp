@@ -2,10 +2,12 @@
   "dependencies": [
     {
       "name": "boost-asio",
+      "default-features": false,
       "version>=": "1.92.0"
     },
     {
       "name": "boost-beast",
+      "$comment": "local port in ./ports/ with less dependencies",
       "version>=": "1.92.0"
     },
     {

@@ -50,6 +50,12 @@ set(RELEASE_LINK_OPTIONS
     -s
 )
 
+# vcpkg's default triplet on Windows uses MSVC, this project is built with MinGW GCC
+if(CMAKE_HOST_WIN32 AND NOT DEFINED VCPKG_TARGET_TRIPLET)
+    set(VCPKG_TARGET_TRIPLET x64-mingw-static)
+    set(VCPKG_HOST_TRIPLET x64-mingw-static)
+endif()
+
 project(${PROJ_NAME} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -78,6 +84,8 @@ target_link_libraries(${PROJ_NAME} PRIVATE
 )
 # disable old code parts kept for compatibility because they produce warnings
 target_compile_definitions(${PROJ_NAME} PRIVATE BOOST_ASIO_NO_DEPRECATED)
+# Boost.DateTime isn't installed (vcpkg.json), Asio would include it otherwise
+target_compile_definitions(${PROJ_NAME} PRIVATE BOOST_ASIO_DISABLE_BOOST_DATE_TIME)
 # boost libraries are header-only by default, it slows down compilation.
 # Non-template code of Asio and Beast is compiled once, in src/BoostSrc.cpp
 target_compile_definitions(${PROJ_NAME} PRIVATE BOOST_ASIO_SEPARATE_COMPILATION BOOST_BEAST_SEPARATE_COMPILATION)

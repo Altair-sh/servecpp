@@ -14,8 +14,6 @@
             "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
                 "CMAKE_CXX_COMPILER": "g++",
-                "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
-                "VCPKG_HOST_TRIPLET": "x64-mingw-static",
                 "VCPKG_INSTALL_OPTIONS": "--clean-after-build;--no-print-usage"
             }
         },
