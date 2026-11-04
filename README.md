@@ -1,17 +1,33 @@
 # servecpp
+Small HTTP/1.1 file server. Meant to run behind a reverse proxy that handles TLS (see [Caddy](#caddy))
 
-Small HTTP/1.1 file server: download, upload, per-directory passwords.
-Built on Boost.Asio coroutines and Boost.Beast. Meant to run behind a reverse proxy that handles TLS. It has built-in webpage with directory listings and upload dialog.
+## Features:
+- upload and download files
+- per-directory passwords (read more in example config)
+- generates html pages for directories
 
-## Build
+## Dependencies
+
+Install [vcpkg](https://github.com/microsoft/vcpkg) and set `VCPKG_ROOT` to its directory.
+The [install_vcpkg_tmp.sh](install_vcpkg_tmp.sh) script in this repo does it for you in `tmp/vcpkg`.
 
 ```sh
-cmake --workflow --preset release
+source ./install_vcpkg_tmp.sh
 ```
 
-The web pages are HTML templates in [templates](templates), transpiled to C++ headers during the build by [hypertextcpp](https://github.com/kamchatka-volcano/hypertextcpp).
-It has no port in the official vcpkg registry, so vcpkg builds it from the overlay port in [ports/hypertextcpp](ports/hypertextcpp), pinned to v2.0.0.
-Its build downloads its dependencies with git, so the first build needs git and network access.
+`CMakePresets.json` is configured to use vcpkg to download and build dependencies listed in [vcpkg.json](vcpkg.json):
+
+- [boost-asio](https://github.com/boostorg/asio) >= 1.92.0: networking and coroutines. Installed without default features.
+- [boost-beast](https://github.com/boostorg/beast) >= 1.92.0: HTTP/1.1. Built from the overlay port in [ports/boost-beast](ports/boost-beast), which has fewer dependencies than the official one.
+- [cli11](https://github.com/CLIUtils/CLI11) >= 2.7.2: command line arguments.
+- [tomlplusplus](https://github.com/marzer/tomlplusplus) >= 3.4.0#1: config file parsing.
+- [hypertextcpp](https://github.com/kamchatka-volcano/hypertextcpp) >= 2.0.0: transpiles the HTML templates in [templates](templates) to C++ headers during the build. Built from the overlay port in [ports/hypertextcpp](ports/hypertextcpp), the first build needs git and network access.
+
+## Build
+Avaliable workflows: debug, release
+```sh
+cmake --workflow release
+```
 
 ## Run
 
@@ -23,6 +39,30 @@ build/release/servecpp -c /etc/servecpp/servecpp.toml
 ```
 
 See [servecpp.example.toml](servecpp.example.toml) for all options.
+
+## Caddy
+
+```
+files.example.com {
+    request_body {
+        max_size 4GB
+    }
+    reverse_proxy 127.0.0.1:8080 {
+        transport http {
+            versions 1.1
+        }
+    }
+}
+```
+
+Caddy streams request bodies to servecpp, so large uploads aren't buffered in memory.
+
+## Tests
+Requires bash and curl.
+```sh
+./test.sh                                    # tests build/debug/servecpp
+SERVECPP=build/release/servecpp ./test.sh
+```
 
 ## HTTP API
 
@@ -66,29 +106,3 @@ The server runs the same checks as for `PUT`, but receives no file and changes n
 | 400 | `invalid path: ...` | the file name has characters that aren't allowed, or `X-Upload-Size` is missing or invalid |
 
 The browser needs this because it starts sending the file with PUT request and doesn't care if server not accepts it. If server closes the connection, the request in browser crashes with no meaningful error message.
-
-## Caddy
-
-```
-files.example.com {
-    request_body {
-        max_size 4GB
-    }
-    reverse_proxy 127.0.0.1:8080 {
-        transport http {
-            versions 1.1
-        }
-    }
-}
-```
-
-Caddy streams request bodies to servecpp, so large uploads aren't buffered in memory.
-
-## Tests
-
-```sh
-./test.sh                                    # tests build/debug/servecpp
-SERVECPP=build/release/servecpp ./test.sh
-```
-
-Requires bash and curl.
